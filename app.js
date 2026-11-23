@@ -81,12 +81,25 @@ async function askClaude() {
   return j.content?.map(c => c.text || "").join("") || "Hmm, aku lagi kehabisan kata.";
 }
 
+async function withRetry(fn, tries = 3) {
+  for (let i = 1; ; i++) {
+    try { return await fn(); }
+    catch (e) {
+      const busy = /high demand|overloaded|unavailable|try again|quota|rate/i.test(e.message);
+      if (!busy || i >= tries) {
+        throw busy ? new Error("Server AI sedang sibuk. Tunggu sebentar lalu kirim lagi.") : e;
+      }
+      await new Promise(r => setTimeout(r, 1500 * i));
+    }
+  }
+}
+
 async function ask(text) {
   history.push({ role: "user", text });
   try {
     let reply;
     if (!cfg.key) reply = DEMO[Math.floor(Math.random() * DEMO.length)];
-    else reply = cfg.provider === "claude" ? await askClaude() : await askGemini();
+    else reply = await withRetry(() => cfg.provider === "claude" ? askClaude() : askGemini());
     history.push({ role: "model", text: reply });
     save();
     return reply;
